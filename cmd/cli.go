@@ -16,11 +16,11 @@ func RunCLI(input string) {
 	var title string
 
 	if strings.Contains(input, ":") || (!strings.Contains(input, ".") && !strings.HasSuffix(input, ".pem") && !strings.HasSuffix(input, ".crt") && !strings.HasSuffix(input, ".cer")) {
-		fmt.Printf("Fetching certificates from domain: %s\n", input)
+		fmt.Fprintf(os.Stderr, "Fetching certificates from domain: %s\n", input)
 		certs, err = cert.FetchCertificatesFromDomain(input)
 		title = fmt.Sprintf("Domain: %s", input)
 	} else {
-		fmt.Printf("Parsing certificate file: %s\n", input)
+		fmt.Fprintf(os.Stderr, "Parsing certificate file: %s\n", input)
 		certs, err = cert.ParseCertificateFile(input)
 		title = fmt.Sprintf("File: %s", input)
 	}
@@ -30,7 +30,7 @@ func RunCLI(input string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Found %d certificate(s)\n", len(certs))
+	fmt.Fprintf(os.Stderr, "Found %d certificate(s)\n", len(certs))
 
 	chainInfo := cert.AnalyzeCertificateChain(certs)
 

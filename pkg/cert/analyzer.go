@@ -37,6 +37,13 @@ type ChainInfo struct {
 	IsValid      bool
 	Errors       []string
 	CrossSigning map[string][]*x509.Certificate
+	ChainPaths   []ChainPath
+}
+
+type ChainPath struct {
+	Path        []CertificateInfo
+	IsComplete  bool
+	Description string
 }
 
 func AnalyzeCertificateChain(certs []*x509.Certificate) *ChainInfo {
@@ -51,6 +58,7 @@ func AnalyzeCertificateChain(certs []*x509.Certificate) *ChainInfo {
 
 	chain.IsValid, chain.Errors = validateChain(certs)
 	chain.CrossSigning = detectCrossSigning(certs)
+	chain.ChainPaths = buildChainPaths(chain)
 
 	return chain
 }
@@ -213,7 +221,7 @@ func validateChain(certs []*x509.Certificate) (bool, []string) {
 func detectCrossSigning(certs []*x509.Certificate) map[string][]*x509.Certificate {
 	crossSigns := make(map[string][]*x509.Certificate)
 	
-	for _, cert := range certs {
+	for i, cert := range certs {
 		subject := cert.Subject.String()
 		issuer := cert.Issuer.String()
 		
@@ -221,19 +229,125 @@ func detectCrossSigning(certs []*x509.Certificate) map[string][]*x509.Certificat
 			continue
 		}
 		
-		for _, otherCert := range certs {
-			if cert == otherCert {
+		for j, otherCert := range certs {
+			if i == j {
 				continue
 			}
 			
-			if otherCert.Subject.String() == subject && otherCert.Issuer.String() != issuer {
-				if crossSigns[subject] == nil {
-					crossSigns[subject] = []*x509.Certificate{}
+			if areCrossSignedCertificates(cert, otherCert) {
+				key := subject // Use just the subject as key
+				if crossSigns[key] == nil {
+					crossSigns[key] = []*x509.Certificate{cert}
 				}
-				crossSigns[subject] = append(crossSigns[subject], otherCert)
+				
+				found := false
+				for _, existing := range crossSigns[key] {
+					if existing == otherCert {
+						found = true
+						break
+					}
+				}
+				if !found {
+					crossSigns[key] = append(crossSigns[key], otherCert)
+				}
 			}
 		}
 	}
 	
-	return crossSigns
+	filtered := make(map[string][]*x509.Certificate)
+	for key, certList := range crossSigns {
+		if len(certList) > 1 {
+			filtered[key] = certList
+		}
+	}
+	
+	return filtered
+}
+
+func areCrossSignedCertificates(cert1, cert2 *x509.Certificate) bool {
+	if cert1.Subject.String() != cert2.Subject.String() {
+		return false
+	}
+	
+	if cert1.Issuer.String() == cert2.Issuer.String() {
+		return false
+	}
+	
+	return samePublicKey(cert1, cert2)
+}
+
+func samePublicKey(cert1, cert2 *x509.Certificate) bool {
+	hash1 := getPublicKeyHash(cert1)
+	hash2 := getPublicKeyHash(cert2)
+	
+	if len(hash1) != len(hash2) {
+		return false
+	}
+	
+	for i := range hash1 {
+		if hash1[i] != hash2[i] {
+			return false
+		}
+	}
+	
+	return true
+}
+
+func getPublicKeyHash(cert *x509.Certificate) []byte {
+	switch pub := cert.PublicKey.(type) {
+	case interface{ Equal(interface{}) bool }:
+		return cert.RawSubjectPublicKeyInfo
+	default:
+		_ = pub
+		return cert.RawSubjectPublicKeyInfo
+	}
+}
+
+func buildChainPaths(chainInfo *ChainInfo) []ChainPath {
+	var paths []ChainPath
+	
+	if len(chainInfo.CrossSigning) == 0 {
+		// No cross-signing, build simple path
+		paths = append(paths, ChainPath{
+			Path:        chainInfo.Certificates,
+			IsComplete:  chainInfo.IsValid,
+			Description: "Primary Certificate Chain",
+		})
+		return paths
+	}
+	
+	// With cross-signing, build multiple paths
+	endEntity := chainInfo.Certificates[0] // Assume first cert is end entity
+	
+	for subject, crossSignedCerts := range chainInfo.CrossSigning {
+		for i, cert := range crossSignedCerts {
+			path := []CertificateInfo{endEntity}
+			
+			// Find the cross-signed cert in our analyzed certificates
+			for _, analyzedCert := range chainInfo.Certificates {
+				if analyzedCert.Subject == subject && analyzedCert.Issuer == cert.Issuer.String() {
+					path = append(path, analyzedCert)
+					break
+				}
+			}
+			
+			// Add root CA if it exists in our chain
+			for _, analyzedCert := range chainInfo.Certificates {
+				if analyzedCert.Subject == cert.Issuer.String() && analyzedCert.IsCA {
+					path = append(path, analyzedCert)
+					break
+				}
+			}
+			
+			description := fmt.Sprintf("Chain Path %d via %s", i+1, cert.Issuer.String())
+			
+			paths = append(paths, ChainPath{
+				Path:        path,
+				IsComplete:  len(path) > 1,
+				Description: description,
+			})
+		}
+	}
+	
+	return paths
 }

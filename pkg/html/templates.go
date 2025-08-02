@@ -315,31 +315,125 @@ const htmlTemplate = `<!DOCTYPE html>
 
             {{if .ChainInfo.CrossSigning}}
             <div class="cross-signing-section">
-                <h3>Cross-Signing Detected</h3>
-                <p>Some certificates in this chain have cross-signing relationships, which means they are signed by multiple Certificate Authorities.</p>
-                {{range $subject, $certs := .ChainInfo.CrossSigning}}
-                <div style="margin: 10px 0;">
-                    <strong>{{$subject}}</strong> has {{len $certs}} cross-signing certificate(s)
+                <h3>🔗 Cross-Signing Detected</h3>
+                <p>Cross-signed certificates are identical certificates (same public key and subject) that have been signed by different Certificate Authorities, providing multiple validation paths.</p>
+                {{range $key, $certs := .ChainInfo.CrossSigning}}
+                <div style="margin: 15px 0; padding: 15px; background: rgba(255, 255, 255, 0.7); border-radius: 8px;">
+                    <div style="font-weight: bold; color: #97266d; margin-bottom: 10px;">
+                        📜 Certificate Group: {{len $certs}} cross-signed version(s)
+                    </div>
+                    <div style="font-size: 0.9em; color: #666; margin-bottom: 10px;">
+                        {{$key}}
+                    </div>
+                    <div style="margin-left: 20px;">
+                        {{range $i, $cert := $certs}}
+                        <div style="margin: 5px 0; padding: 8px; background: rgba(151, 38, 109, 0.1); border-radius: 4px;">
+                            <strong>Version {{add $i 1}}:</strong><br>
+                            <span style="font-size: 0.85em;">
+                                <strong>Subject:</strong> {{$cert.Subject}}<br>
+                                <strong>Issuer:</strong> {{$cert.Issuer}}<br>
+                                <strong>Serial:</strong> {{$cert.SerialNumber}}<br>
+                                <strong>Valid:</strong> {{$cert.NotBefore.Format "2006-01-02"}} to {{$cert.NotAfter.Format "2006-01-02"}}
+                            </span>
+                        </div>
+                        {{end}}
+                    </div>
                 </div>
                 {{end}}
+                <div style="margin-top: 15px; padding: 10px; background: rgba(72, 187, 120, 0.1); border-radius: 6px; font-size: 0.9em;">
+                    💡 <strong>Why Cross-Signing Matters:</strong> Cross-signing provides redundancy and helps with certificate chain validation when different root stores are used across platforms and browsers.
+                </div>
             </div>
             {{end}}
 
             <div class="chain-visualization">
                 <h3>Certificate Chain Visualization</h3>
-                <div class="cert-chain">
-                    {{range $i, $cert := .ChainInfo.Certificates}}
-                    <div class="cert-link">
-                        <div class="cert-box{{if $cert.IsCA}} ca{{end}}{{if $cert.IsExpired}} expired{{end}}{{if index $.ChainInfo.CrossSigning $cert.Subject}} cross-signed{{end}}">
-                            <strong>{{if $cert.IsCA}}🏛️ CA: {{else}}🌐 End Entity: {{end}}</strong><br>
-                            {{$cert.Subject}}
-                            {{if $cert.IsExpired}}<br><small>⚠️ EXPIRED</small>{{end}}
+                {{if .ChainInfo.CrossSigning}}
+                <div style="background: rgba(255, 248, 220, 0.9); padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                    <h4 style="color: #b7791f; margin-bottom: 15px;">🔗 Cross-Signing Structure Detected</h4>
+                    <p style="margin-bottom: 15px; color: #8b5e3c;">The visualization below shows the complex cross-signing relationships in your certificate chain:</p>
+                    
+                    <div class="cross-sign-tree">
+                        {{range $key, $certs := .ChainInfo.CrossSigning}}
+                        <div class="cross-sign-group" style="margin: 20px 0; padding: 15px; border: 2px dashed #d69e2e; border-radius: 10px; background: rgba(237, 242, 247, 0.5);">
+                            <div style="text-align: center; margin-bottom: 15px;">
+                                <div class="cert-box cross-signed ca" style="display: inline-block; margin: 0;">
+                                    <strong>🔗 Cross-Signed Certificate</strong><br>
+                                    {{(index $certs 0).Subject}}
+                                </div>
+                            </div>
+                            
+                            <div style="display: flex; justify-content: space-around; align-items: flex-start; flex-wrap: wrap; margin-top: 15px;">
+                                {{range $i, $cert := $certs}}
+                                <div style="margin: 10px; text-align: center; flex: 1; min-width: 250px;">
+                                    <div class="cert-arrow" style="margin: 5px 0;">↑</div>
+                                    <div class="cert-box ca" style="margin: 0;">
+                                        <strong>🏛️ Issuer {{add $i 1}}:</strong><br>
+                                        {{$cert.Issuer}}
+                                    </div>
+                                    <div style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                                        Serial: {{$cert.SerialNumber}}<br>
+                                        Valid: {{$cert.NotBefore.Format "2006-01-02"}} to {{$cert.NotAfter.Format "2006-01-02"}}
+                                    </div>
+                                </div>
+                                {{end}}
+                            </div>
+                        </div>
+                        {{end}}
+                    </div>
+                </div>
+                
+                {{if .ChainInfo.ChainPaths}}
+                <div style="background: rgba(240, 253, 244, 0.9); padding: 20px; border-radius: 10px; margin: 20px 0;">
+                    <h4 style="color: #2f855a; margin-bottom: 15px;">🛤️ Multiple Validation Paths</h4>
+                    <p style="margin-bottom: 15px; color: #2d3748;">Due to cross-signing, this certificate can be validated through multiple paths:</p>
+                    
+                    {{range $pathIndex, $path := .ChainInfo.ChainPaths}}
+                    <div style="margin: 15px 0; padding: 15px; background: rgba(255, 255, 255, 0.8); border-radius: 8px; border-left: 4px solid #48bb78;">
+                        <h5 style="color: #2f855a; margin-bottom: 10px;">{{$path.Description}}</h5>
+                        <div class="cert-chain" style="display: flex; flex-direction: column; align-items: center;">
+                            {{range $i, $cert := $path.Path}}
+                            <div class="cert-link">
+                                <div class="cert-box{{if $cert.IsCA}} ca{{end}}{{if $cert.IsExpired}} expired{{end}}" style="max-width: 400px;">
+                                    <strong>{{if $cert.IsCA}}🏛️ CA: {{else}}🌐 End Entity: {{end}}</strong><br>
+                                    {{$cert.Subject}}
+                                    {{if $cert.IsExpired}}<br><small>⚠️ EXPIRED</small>{{end}}
+                                </div>
+                            </div>
+                            {{if ne $i (sub (len $path.Path) 1)}}
+                            <div class="cert-arrow">↓</div>
+                            {{end}}
+                            {{end}}
+                        </div>
+                        <div style="margin-top: 10px; font-size: 0.85em; color: #4a5568;">
+                            {{if $path.IsComplete}}
+                            ✅ <strong>Complete validation path</strong>
+                            {{else}}
+                            ⚠️ <strong>Incomplete path</strong> - some intermediate certificates may be missing
+                            {{end}}
                         </div>
                     </div>
-                    {{if ne $i (sub (len $.ChainInfo.Certificates) 1)}}
-                    <div class="cert-arrow">↓</div>
                     {{end}}
-                    {{end}}
+                </div>
+                {{end}}
+                {{end}}
+                
+                <div class="traditional-chain">
+                    <h4 style="margin-bottom: 15px;">📋 All Certificates in Order</h4>
+                    <div class="cert-chain">
+                        {{range $i, $cert := .ChainInfo.Certificates}}
+                        <div class="cert-link">
+                            <div class="cert-box{{if $cert.IsCA}} ca{{end}}{{if $cert.IsExpired}} expired{{end}}{{if index $.ChainInfo.CrossSigning $cert.Subject}} cross-signed{{end}}">
+                                <strong>{{if $cert.IsCA}}🏛️ CA: {{else}}🌐 End Entity: {{end}}</strong><br>
+                                {{$cert.Subject}}
+                                {{if $cert.IsExpired}}<br><small>⚠️ EXPIRED</small>{{end}}
+                            </div>
+                        </div>
+                        {{if ne $i (sub (len $.ChainInfo.Certificates) 1)}}
+                        <div class="cert-arrow">↓</div>
+                        {{end}}
+                        {{end}}
+                    </div>
                 </div>
             </div>
         </div>

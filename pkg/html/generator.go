@@ -3,6 +3,7 @@ package html
 import (
 	"bytes"
 	"html/template"
+	"time"
 
 	"certview/pkg/cert"
 )
@@ -19,6 +20,9 @@ func GenerateHTML(chainInfo *cert.ChainInfo, title string) (string, error) {
 		},
 		"sub": func(a, b int) int {
 			return a - b
+		},
+		"now": func() time.Time {
+			return time.Now()
 		},
 	}).Parse(htmlTemplate)
 	if err != nil {
