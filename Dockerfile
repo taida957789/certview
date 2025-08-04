@@ -8,4 +8,4 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o app
 FROM scratch
 COPY --from=build /app/app /app/app
 EXPOSE 8080
-CMD ["/app/app"]
+CMD ["/app/app", "-server"]
